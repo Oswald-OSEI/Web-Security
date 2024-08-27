@@ -30,32 +30,23 @@ public class CustomAuthFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        // Extract the username and password from the request headers
-       try{ String jwt = getJwtFromRequest(request);
-           System.out.println("Extracted JWT: " + jwt);
-           if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
-               String username = tokenProvider.getUsernameFromJWT(jwt);
-               System.out.println("Username from JWT: " + username);
+        try {
+            String jwt = getJwtFromRequest(request);
+            if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
+                String username = tokenProvider.getUsernameFromJWT(jwt);
+                UserDetails userDetails = customUserDetailsService.loadUserByUsername(username);
+                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                        userDetails, null, userDetails.getAuthorities());
+                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+            }
+        } catch (Exception ex) {
+            logger.error("Could not set user authentication in security context using jwt. fall back to basic auth", ex);
+        }
 
-
-               UserDetails userDetails = customUserDetailsService.loadUserByUsername(username);
-               UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-               authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-               SecurityContextHolder.getContext().setAuthentication(authentication);
-               System.out.println("Authentication set in SecurityContext");
-        }else {
-               System.out.println("Invalid JWT or JWT not present");
-           }
-       }catch (Exception ex) {
-               logger.error("Could not set user authentication in security context", ex);
-               response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-               response.getWriter().write("Invalid credentials");
-           }
-
-           filterChain.doFilter(request, response);
-
+        filterChain.doFilter(request, response);
     }
+
     private String getJwtFromRequest(HttpServletRequest request) {
         String bearerToken = request.getHeader("Authorization");
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
